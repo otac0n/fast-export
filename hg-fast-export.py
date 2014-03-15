@@ -156,7 +156,7 @@ def sanitize_name(name,what="branch"):
     sys.stderr.write('Warning: sanitized %s [%s] to [%s]\n' % (what,name,n))
   return n
 
-def export_commit(ui,repo,revision,old_marks,max,count,authors,sob,brmap):
+def export_commit(ui,repo,revision,old_marks,max,count,authors,brmap,sob):
   def get_branchname(name):
     if brmap.has_key(name):
       return brmap[name]
@@ -268,6 +268,25 @@ def load_authors(filename):
   sys.stderr.write('Loaded %d authors\n' % l)
   return cache
 
+def load_branches(filename):
+  cache={}
+  if not os.path.exists(filename):
+    return cache
+  f=open(filename,'r')
+  l=0
+  lre=re.compile('^([^=]+)[ ]*=[ ]*(.+)$')
+  for line in f.readlines():
+    l+=1
+    m=lre.match(line)
+    if m==None:
+      sys.stderr.write('Invalid file format in [%s], line %d\n' % (filename,l))
+      continue
+    # put key:value in cache, key without ^:
+    cache[m.group(1).strip()]=m.group(2).strip()
+  f.close()
+  sys.stderr.write('Loaded %d branches\n' % l)
+  return cache
+
 def branchtip(repo, heads):
   '''return the tipmost branch head in heads'''
   tip = heads[-1]
@@ -305,7 +324,7 @@ def verify_heads(ui,repo,cache,force):
 
   return True
 
-def hg2git(repourl,m,marksfile,mappingfile,headsfile,tipfile,authors={},sob=False,force=False):
+def hg2git(repourl,m,marksfile,mappingfile,headsfile,tipfile,authors={},branches={},sob=False,force=False):
   _max=int(m)
 
   old_marks=load_cache(marksfile,lambda s: int(s)-1)
@@ -334,9 +353,8 @@ def hg2git(repourl,m,marksfile,mappingfile,headsfile,tipfile,authors={},sob=Fals
 
 
   c=0
-  brmap={}
   for rev in range(min,max):
-    c=export_commit(ui,repo,rev,old_marks,max,c,authors,sob,brmap)
+    c=export_commit(ui,repo,rev,old_marks,max,c,authors,branches,sob)
 
   state_cache['tip']=max
   state_cache['repo']=repourl
@@ -373,6 +391,8 @@ if __name__=='__main__':
       default=False,help="Enable parsing Signed-off-by lines")
   parser.add_option("-A","--authors",dest="authorfile",
       help="Read authormap from AUTHORFILE")
+  parser.add_option("-B","--branches",dest="branchfile",
+      help="Read branchmap from BRANCHFILE")
   parser.add_option("-f","--force",action="store_true",dest="force",
       default=False,help="Ignore validation errors by force")
   parser.add_option("-M","--default-branch",dest="default_branch",
@@ -395,6 +415,10 @@ if __name__=='__main__':
   if options.authorfile!=None:
     a=load_authors(options.authorfile)
 
+  b={}
+  if options.branchfile!=None:
+    b=load_branches(options.branchfile)
+
   if options.default_branch!=None:
     set_default_branch(options.default_branch)
 
@@ -402,4 +426,4 @@ if __name__=='__main__':
     set_origin_name(options.origin_name)
 
   sys.exit(hg2git(options.repourl,m,options.marksfile,options.mappingfile,options.headsfile,
-    options.statusfile,authors=a,sob=options.sob,force=options.force))
+    options.statusfile,authors=a,branches=b,sob=options.sob,force=options.force))
